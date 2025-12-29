@@ -20,6 +20,16 @@ const camera = {
 // Socket connection
 const socket = io(window.location.hostname === 'localhost' ? 'http://localhost:3000' : '/')
 
+// Mobile Input State
+const mobileInput = {
+  up: false,
+  left: false,
+  right: false,
+  fire: false,
+  dash: false
+}
+
+
 let players: any = {}
 let projectiles: any[] = []
 let powerups: any[] = []
@@ -316,6 +326,65 @@ socket.on('gameStarted', () => {
   uiContainer.style.display = 'block'
 })
 
+// Mobile Joystick Logic
+const joystickStick = document.getElementById('joystick-stick')!
+const joystickBase = document.getElementById('joystick-base')!
+const fireBtn = document.getElementById('mobile-fire-btn')!
+const dashBtn = document.getElementById('mobile-dash-btn')!
+
+let joystickActive = false
+let joystickCenter = { x: 0, y: 0 }
+
+joystickBase.addEventListener('touchstart', (e) => {
+  joystickActive = true
+  const rect = joystickBase.getBoundingClientRect()
+  joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+}, { passive: true })
+
+window.addEventListener('touchmove', (e) => {
+  if (!joystickActive) return
+  const touch = e.touches[0]
+  const dx = touch.clientX - joystickCenter.x
+  const dy = touch.clientY - joystickCenter.y
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  const maxDist = 45
+
+  const moveX = dx / dist * Math.min(dist, maxDist)
+  const moveY = dy / dist * Math.min(dist, maxDist)
+
+  joystickStick.style.transform = `translate(${moveX}px, ${moveY}px)`
+
+  // Set movement flags
+  mobileInput.up = dy < -15
+  mobileInput.left = dx < -15
+  mobileInput.right = dx > 15
+}, { passive: false })
+
+window.addEventListener('touchend', () => {
+  joystickActive = false
+  joystickStick.style.transform = `translate(0px, 0px)`
+  mobileInput.up = false
+  mobileInput.left = false
+  mobileInput.right = false
+})
+
+fireBtn.addEventListener('touchstart', (e) => {
+  mobileInput.fire = true
+  e.preventDefault()
+})
+fireBtn.addEventListener('touchend', () => {
+  mobileInput.fire = false
+})
+
+dashBtn.addEventListener('touchstart', (e) => {
+  mobileInput.dash = true
+  e.preventDefault()
+})
+dashBtn.addEventListener('touchend', () => {
+  mobileInput.dash = false
+})
+
+
 
 socket.on('connect', () => {
   console.log('Connected to server');
@@ -585,18 +654,20 @@ function gameLoop() {
   // Handle local input and send to server
   if (!typing && !isGameOver) {
     const input = {
-      up: keys['KeyW'] || keys['ArrowUp'],
-      left: keys['KeyA'] || keys['ArrowLeft'],
-      right: keys['KeyD'] || keys['ArrowRight'],
-      dash: keys['ShiftLeft'] || keys['ShiftRight']
+      up: keys['KeyW'] || keys['ArrowUp'] || mobileInput.up,
+      left: keys['KeyA'] || keys['ArrowLeft'] || mobileInput.left,
+      right: keys['KeyD'] || keys['ArrowRight'] || mobileInput.right,
+      dash: keys['ShiftLeft'] || keys['ShiftRight'] || mobileInput.dash
     }
     socket.emit('playerInput', input)
 
-    if (keys['Space']) {
+    if (keys['Space'] || mobileInput.fire) {
       socket.emit('shoot')
       keys['Space'] = false
+      // No need to reset fire since it's button-state based on mobile
     }
   }
+
 
   // Draw Minimap
   drawMinimap();
