@@ -38,7 +38,33 @@ body {
   border-radius: 12px;
   width: 200px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  margin-top: 50px;
 }
+
+#exit-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  pointer-events: auto;
+  background: rgba(255, 0, 85, 0.2);
+  border: 1px solid #ff0055;
+  color: #ff0055;
+  padding: 8px 15px;
+  border-radius: 4px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#exit-btn:hover {
+  background: #ff0055;
+  color: white;
+  box-shadow: 0 0 15px #ff0055;
+}
+
 
 #leaderboard h3 {
   margin: 0 0 10px 0;
@@ -334,4 +360,169 @@ input[type="text"]:focus {
 .modal button:hover {
   background: white;
   box-shadow: 0 0 20px white;
+}
+
+/* Lobby Screen */
+#lobby-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 10, 15, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 200;
+  backdrop-filter: blur(10px);
+}
+
+.lobby-container {
+  width: 800px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--neon-blue);
+  padding: 40px;
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(0, 243, 255, 0.2);
+}
+
+.lobby-container h2 {
+  color: var(--neon-blue);
+  letter-spacing: 10px;
+  margin-bottom: 40px;
+}
+
+.team-selection {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  margin-bottom: 40px;
+  gap: 20px;
+}
+
+.team-box {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  border-radius: 12px;
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-box.blue {
+  border-color: #00f3ff;
+}
+
+.team-box.red {
+  border-color: #ff0055;
+}
+
+.team-box h3 {
+  margin-top: 0;
+  font-size: 18px;
+  letter-spacing: 3px;
+}
+
+.team-box.blue h3 {
+  color: #00f3ff;
+}
+
+.team-box.red h3 {
+  color: #ff0055;
+}
+
+.team-box ul {
+  list-style: none;
+  padding: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.team-box li {
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+}
+
+.vs-divider {
+  font-size: 40px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.2);
+  align-self: center;
+}
+
+.join-team-btn {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid white;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-top: 15px;
+  transition: 0.3s;
+  text-transform: uppercase;
+  font-weight: bold;
+  pointer-events: auto;
+}
+
+.team-box.blue .join-team-btn {
+  border-color: #00f3ff;
+  color: #00f3ff;
+}
+
+.team-box.blue .join-team-btn:hover {
+  background: #00f3ff;
+  color: black;
+}
+
+.team-box.red .join-team-btn {
+  border-color: #ff0055;
+  color: #ff0055;
+}
+
+.team-box.red .join-team-btn:hover {
+  background: #ff0055;
+  color: white;
+}
+
+.lobby-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+#launch-btn {
+  background: var(--neon-blue);
+  color: black;
+  border: none;
+  padding: 15px 50px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 4px;
+  box-shadow: 0 0 20px var(--neon-blue);
+  pointer-events: auto;
+}
+
+#leave-lobby-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.5);
+  padding: 8px 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  pointer-events: auto;
+}
+
+#waiting-msg {
+  color: #888;
+  font-style: italic;
+  font-size: 14px;
 }

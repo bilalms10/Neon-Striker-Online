@@ -29,6 +29,8 @@ let matchTime = MATCH_DURATION;
 let gameActive = true;
 let teamKills = { blue: 0, red: 0 };
 let matchResult = null;
+let gameState = 'PLAYING'; // Default to playing for Solo, but LOBBY for Team mode
+
 
 const POWERUP_TYPES = {
     HEALTH: { color: '#00ff00', label: '+' },
@@ -85,21 +87,45 @@ io.on('connection', (socket) => {
             team: team,
             maxHp: 100,
             hp: 100,
-            // Effects
             speedMult: 1,
             fireRateMult: 1,
             dashCooldown: 0,
-            effects: {}
+            effects: {},
+            inQueue: (mode === 'team') // Team players start in lobby
         };
 
-        // Send current players to the new player
+        if (mode === 'team') {
+            gameState = 'LOBBY';
+            io.emit('lobbyUpdate', getLobbyData());
+        }
+
         socket.emit('currentPlayers', players);
-
-        // Broadcast the new player to everyone else
         socket.broadcast.emit('newPlayer', players[socket.id]);
-
         console.log(`User joined: ${name} (${team})`);
     });
+
+    socket.on('joinTeam', (selection) => {
+        const player = players[socket.id];
+        if (!player) return;
+        player.team = selection;
+        player.color = selection === 'blue' ? '#00f3ff' : '#ff0055';
+        io.emit('lobbyUpdate', getLobbyData());
+    });
+
+    socket.on('startMatch', () => {
+        gameState = 'PLAYING';
+        for (let id in players) {
+            players[id].inQueue = false;
+        }
+        io.emit('gameStarted');
+    });
+
+    socket.on('exitToHQ', () => {
+        delete players[socket.id];
+        io.emit('playerDisconnected', socket.id);
+        io.emit('lobbyUpdate', getLobbyData());
+    });
+
 
     socket.on('disconnect', () => {
         console.log('user disconnected:', socket.id);
@@ -124,7 +150,7 @@ io.on('connection', (socket) => {
     socket.on('playerInput', (input) => {
         if (!gameActive) return;
         const player = players[socket.id];
-        if (!player) return;
+        if (!player || player.inQueue) return;
 
         if (input.left) player.angle -= 0.1;
         if (input.right) player.angle += 0.1;
@@ -177,7 +203,7 @@ io.on('connection', (socket) => {
     // Handle shooting
     socket.on('shoot', () => {
         const player = players[socket.id];
-        if (!player) return;
+        if (!player || player.inQueue) return;
 
         // Rate limiting check could go here if server-side validation is needed
         // For now trusting client keyup for "rapid fire" prevention but adding cooldown would be better
@@ -269,10 +295,18 @@ function checkWinCondition() {
 
     if (winner) {
         gameActive = false;
+        gameState = 'LOBBY'; // Go back to lobby after game over
         matchResult = { winner, winnerType };
         io.emit('gameOver', matchResult);
     }
 }
+
+function getLobbyData() {
+    return Object.values(players)
+        .filter(p => p.inQueue)
+        .map(p => ({ name: p.name, team: p.team, id: p.id }));
+}
+
 
 
 // Game Loop (Update state and broadcast)
@@ -348,8 +382,15 @@ setInterval(() => {
         if (matchTime <= 0) checkWinCondition();
     }
 
+    const activePlayers = {};
+    for (let id in players) {
+        if (!players[id].inQueue) {
+            activePlayers[id] = players[id];
+        }
+    }
+
     io.emit('stateUpdate', {
-        players,
+        players: activePlayers,
         projectiles,
         powerups,
         obstacles,
@@ -357,6 +398,7 @@ setInterval(() => {
         teamKills,
         gameActive
     });
+
 
     // Spawn powerups randomly
     if (powerups.length < 5 && Math.random() < 0.005) {

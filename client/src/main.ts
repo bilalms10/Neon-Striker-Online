@@ -147,8 +147,20 @@ for (let i = 0; i < 150; i++) stars.push(new Star())
 // Input state
 const keys: { [key: string]: boolean } = {}
 
-window.addEventListener('keydown', (e) => (keys[e.code] = true))
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true
+
+  // Lobby team switching
+  if (lobbyScreen.style.display === 'flex') {
+    if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+      socket.emit('joinTeam', 'blue')
+    } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+      socket.emit('joinTeam', 'red')
+    }
+  }
+})
 window.addEventListener('keyup', (e) => (keys[e.code] = false))
+
 
 // Start Screen Logic
 const loginScreen = document.getElementById('login-screen')!
@@ -160,7 +172,16 @@ const modeBtns = document.querySelectorAll('.mode-btn')
 const chatInput = document.getElementById('chat-input') as HTMLInputElement
 const chatList = document.getElementById('chat-messages')!
 const killFeed = document.getElementById('kill-feed')!
+const lobbyScreen = document.getElementById('lobby-screen')!
+const uiContainer = document.getElementById('ui')!
+const blueList = document.getElementById('blue-list')!
+const redList = document.getElementById('red-list')!
+const launchBtn = document.getElementById('launch-btn')!
+const waitingMsg = document.getElementById('waiting-msg')!
+const exitBtn = document.getElementById('exit-btn')!
+const leaveLobbyBtn = document.getElementById('leave-lobby-btn')!
 let typing = false;
+
 
 chatInput.addEventListener('focus', () => typing = true)
 chatInput.addEventListener('blur', () => typing = false)
@@ -226,9 +247,75 @@ startBtn.addEventListener('click', () => {
   const name = usernameInput.value.trim() || 'OPERATOR'
   socket.emit('join', { name, mode: selectedMode })
   loginScreen.style.display = 'none'
-  document.getElementById('ui')!.style.display = 'block'
+
+  if (selectedMode === 'team') {
+    lobbyScreen.style.display = 'flex'
+    uiContainer.style.display = 'none'
+  } else {
+    lobbyScreen.style.display = 'none'
+    uiContainer.style.display = 'block'
+  }
+
   if (audioCtx.state === 'suspended') audioCtx.resume()
 })
+
+// Lobby Interaction
+document.querySelectorAll('.join-team-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const team = btn.getAttribute('data-team')
+    socket.emit('joinTeam', team)
+  })
+})
+
+launchBtn.addEventListener('click', () => {
+  socket.emit('startMatch')
+})
+
+exitBtn.addEventListener('click', () => {
+  socket.emit('exitToHQ')
+  location.reload()
+})
+
+leaveLobbyBtn.addEventListener('click', () => {
+  socket.emit('exitToHQ')
+  location.reload()
+})
+
+socket.on('lobbyUpdate', (playersInLobby: any[]) => {
+  blueList.innerHTML = ''
+  redList.innerHTML = ''
+
+  let blueCount = 0
+  let redCount = 0
+
+  playersInLobby.forEach(p => {
+    const li = document.createElement('li')
+    li.textContent = p.name
+    li.style.color = p.team === 'blue' ? '#00f3ff' : '#ff0055'
+    if (p.team === 'blue') {
+      blueList.appendChild(li)
+      blueCount++
+    } else if (p.team === 'red') {
+      redList.appendChild(li)
+      redCount++
+    }
+  })
+
+  // Show launch button if there's at least one player on each team (or any for testing)
+  if (blueCount > 0 && redCount > 0) {
+    launchBtn.style.display = 'block'
+    waitingMsg.style.display = 'none'
+  } else {
+    launchBtn.style.display = 'none'
+    waitingMsg.style.display = 'block'
+  }
+})
+
+socket.on('gameStarted', () => {
+  lobbyScreen.style.display = 'none'
+  uiContainer.style.display = 'block'
+})
+
 
 socket.on('connect', () => {
   console.log('Connected to server');

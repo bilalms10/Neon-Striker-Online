@@ -30,7 +30,32 @@
     </div>
   </div>
 
+  <div id="lobby-screen" style="display: none;">
+    <div class="lobby-container">
+      <h2>TACTICAL LOBBY</h2>
+      <div class="team-selection">
+        <div class="team-box blue" id="blue-team-list">
+          <h3>BLUE SQUAD</h3>
+          <ul id="blue-list"></ul>
+          <button class="join-team-btn" data-team="blue">JOIN BLUE</button>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="team-box red" id="red-team-list">
+          <h3>RED SQUAD</h3>
+          <ul id="red-list"></ul>
+          <button class="join-team-btn" data-team="red">JOIN RED</button>
+        </div>
+      </div>
+      <div class="lobby-footer">
+        <button id="launch-btn" style="display: none;">LAUNCH MISSION</button>
+        <p id="waiting-msg">WAITING FOR OPERATORS...</p>
+        <button id="leave-lobby-btn">EXIT TO HQ</button>
+      </div>
+    </div>
+  </div>
+
   <div id="ui" style="display: none;">
+    <button id="exit-btn">EXIT TO HQ</button>
     <div id="leaderboard">
       <h3>Leaderboard</h3>
       <ul id="scoreList"></ul>
