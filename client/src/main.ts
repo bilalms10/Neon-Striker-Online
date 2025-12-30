@@ -66,8 +66,7 @@ class DamagePop {
     ctx.fillStyle = this.color;
     ctx.font = 'bold 16px Outfit';
     ctx.textAlign = 'center';
-    ctx.shadowBlur = 5;
-    ctx.shadowColor = this.color;
+    // Removed shadowBlur for performance
     ctx.fillText(this.text, this.x, this.y);
     ctx.restore();
   }
@@ -769,11 +768,13 @@ function drawUI() {
 }
 
 function drawMinimap() {
-  const mapSize = 180;
+  const isMobile = window.innerWidth <= 1024;
+  const mapSize = isMobile ? 120 : 180; // Smaller on mobile
   const padding = 20;
   const scale = mapSize / WORLD_WIDTH;
 
-  const startX = canvas.width - mapSize - padding;
+  // Move it left on mobile to avoid overlapping the fire button
+  const startX = canvas.width - mapSize - (isMobile ? 160 : padding);
   const startY = canvas.height - mapSize - padding;
 
   ctx.save();
