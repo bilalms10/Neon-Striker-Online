@@ -348,7 +348,7 @@ setInterval(() => {
                 // Hit!
                 player.hp -= 10;
 
-                io.emit('effect', { type: 'hit', x: p.x, y: p.y, color: player.color });
+                io.emit('effect', { type: 'hit', x: p.x, y: p.y, color: player.color, id: id });
 
                 if (player.hp <= 0) {
                     const victimName = player.name;

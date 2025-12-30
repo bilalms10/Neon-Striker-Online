@@ -40,6 +40,42 @@ let screenShake = 0
 let matchTimer = 600000
 let teamScores = { blue: 0, red: 0 }
 
+class DamagePop {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  life: number = 1.0;
+  vy: number = -1.5;
+
+  constructor(x: number, y: number, text: string, color: string) {
+    this.x = x;
+    this.y = y;
+    this.text = text;
+    this.color = color;
+  }
+
+  update() {
+    this.y += this.vy;
+    this.life -= 0.02;
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+    ctx.globalAlpha = this.life;
+    ctx.fillStyle = this.color;
+    ctx.font = 'bold 16px Outfit';
+    ctx.textAlign = 'center';
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = this.color;
+    ctx.fillText(this.text, this.x, this.y);
+    ctx.restore();
+  }
+}
+
+let damagePops: DamagePop[] = [];
+let playerFlashes: Record<string, number> = {};
+
 // Performance optimizations: Off-screen background
 const bgCanvas = document.createElement('canvas')
 const bgCtx = bgCanvas.getContext('2d')!
@@ -226,7 +262,11 @@ socket.on('effect', (data: any) => {
       break;
     case 'hit':
       playSound('explosion');
-      screenShake = 15; // trigger screen shake on hit
+      screenShake = 15;
+      if (data.id) playerFlashes[data.id] = 3; // 3 frames of white flash
+      if (data.x && data.y) {
+        damagePops.push(new DamagePop(data.x, data.y, '10', data.color || '#fff'));
+      }
       break;
     case 'dash':
       playSound('shoot');
@@ -493,14 +533,14 @@ function drawPlayer(player: any) {
   ctx.save()
   ctx.translate(player.x, player.y)
 
-  // Glow Effect REMOVED for Performance
-  // ctx.shadowBlur = 15;
-  // ctx.shadowColor = player.color;
+  // Impact Frame logic
+  const isFlashing = playerFlashes[player.id] > 0;
+  if (isFlashing) playerFlashes[player.id]--;
 
   // Draw Ship Body (Triangle)
   ctx.rotate(player.angle || 0)
-  ctx.strokeStyle = player.color || 'white'
-  ctx.lineWidth = 3
+  ctx.strokeStyle = isFlashing ? '#ffffff' : (player.color || 'white');
+  ctx.lineWidth = isFlashing ? 5 : 3; // Thicker during flash
   ctx.lineJoin = 'round'
 
   ctx.beginPath()
@@ -511,8 +551,13 @@ function drawPlayer(player: any) {
   ctx.closePath()
   ctx.stroke()
 
+  if (isFlashing) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  }
+
   // Cockpit
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)' // Made more solid
+  ctx.fillStyle = isFlashing ? '#ffffff' : 'rgba(255, 255, 255, 0.8)'
   ctx.beginPath()
   ctx.arc(0, 0, 5, 0, Math.PI * 2)
   ctx.fill()
@@ -595,11 +640,6 @@ function drawProjectile(proj: any) {
 // ... rest of file ...
 
 function gameLoop() {
-  // Update shake
-  if (screenShake > 0) screenShake *= 0.9
-  if (screenShake < 0.5) screenShake = 0
-  const shakeX = (Math.random() - 0.5) * screenShake
-  const shakeY = (Math.random() - 0.5) * screenShake
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -665,6 +705,13 @@ function gameLoop() {
 
   projectiles.forEach(drawProjectile)
 
+  // Damage Pops
+  for (let i = damagePops.length - 1; i >= 0; i--) {
+    damagePops[i].update();
+    damagePops[i].draw(ctx);
+    if (damagePops[i].life <= 0) damagePops.splice(i, 1);
+  }
+
   // Particles Cap
   if (particles.length > 100) particles.splice(0, particles.length - 100);
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -717,6 +764,8 @@ function drawUI() {
     ctx.fillStyle = '#ff0055'
     ctx.fillText(`RED: ${teamScores.red}`, 20, 115)
   }
+
+  drawMinimap();
 }
 
 function drawMinimap() {
