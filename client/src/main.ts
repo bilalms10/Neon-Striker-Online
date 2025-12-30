@@ -35,12 +35,43 @@ let projectiles: any[] = []
 let powerups: any[] = []
 let obstacles: any[] = []
 let particles: Particle[] = []
-let stars: Star[] = []
+let isGameOver = false
 let screenShake = 0
-let lastCamera = { x: 0, y: 0 }
 let matchTimer = 600000
 let teamScores = { blue: 0, red: 0 }
-let isGameOver = false
+
+// Performance optimizations: Off-screen background
+const bgCanvas = document.createElement('canvas')
+const bgCtx = bgCanvas.getContext('2d')!
+bgCanvas.width = WORLD_WIDTH
+bgCanvas.height = WORLD_HEIGHT
+
+function initBackground() {
+  bgCtx.fillStyle = '#050510'
+  bgCtx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
+
+  // Draw Stars once
+  bgCtx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+  for (let i = 0; i < 400; i++) {
+    const x = Math.random() * WORLD_WIDTH
+    const y = Math.random() * WORLD_HEIGHT
+    const size = Math.random() * 2
+    bgCtx.beginPath()
+    bgCtx.arc(x, y, size, 0, Math.PI * 2)
+    bgCtx.fill()
+  }
+
+  // Draw Grid once
+  bgCtx.strokeStyle = 'rgba(0, 243, 255, 0.1)'
+  bgCtx.lineWidth = 1
+  for (let x = 0; x <= WORLD_WIDTH; x += 100) {
+    bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, WORLD_HEIGHT); bgCtx.stroke();
+  }
+  for (let y = 0; y <= WORLD_HEIGHT; y += 100) {
+    bgCtx.beginPath(); bgCtx.moveTo(0, y); bgCtx.lineTo(WORLD_WIDTH, y); bgCtx.stroke();
+  }
+}
+initBackground()
 
 // Audio Context
 const AudioContext = window.AudioContext || (window as any).webkitAudioContext
@@ -119,40 +150,7 @@ class Particle {
   }
 }
 
-class Star {
-  x: number;
-  y: number;
-  z: number;
-
-  constructor() {
-    this.x = Math.random() * canvas.width
-    this.y = Math.random() * canvas.height
-    this.z = Math.random() * 2 + 0.5 // Depth/Speed
-  }
-
-  update(dx: number, dy: number) {
-    this.x -= dx * this.z * 0.1 // Parallax effect
-    this.y -= dy * this.z * 0.1
-
-    // Wrap
-    if (this.x < 0) this.x += canvas.width
-    if (this.x > canvas.width) this.x -= canvas.width
-    if (this.y < 0) this.y += canvas.height
-    if (this.y > canvas.height) this.y -= canvas.height
-  }
-
-  draw(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.2})`
-    ctx.beginPath()
-    ctx.arc(this.x, this.y, this.z, 0, Math.PI * 2)
-    ctx.fill()
-  }
-}
-
-
-
-// Init stars
-for (let i = 0; i < 150; i++) stars.push(new Star())
+// Stars class removed in favor of static bgCanvas
 
 // Input state
 const keys: { [key: string]: boolean } = {}
@@ -339,13 +337,20 @@ const joystickBase = document.getElementById('joystick-base')!
 const fireBtn = document.getElementById('mobile-fire-btn')!
 const dashBtn = document.getElementById('mobile-dash-btn')!
 
+const joystickContainer = document.getElementById('joystick-container')!
 let joystickActive = false
 let joystickCenter = { x: 0, y: 0 }
 
-joystickBase.addEventListener('touchstart', () => {
+joystickContainer.addEventListener('touchstart', (e: any) => {
+  const touch = e.touches[0]
   joystickActive = true
-  const rect = joystickBase.getBoundingClientRect()
-  joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+
+  // Position the joystick base where the user touched
+  joystickBase.style.display = 'flex'
+  joystickBase.style.left = `${touch.clientX}px`
+  joystickBase.style.top = `${touch.clientY}px`
+
+  joystickCenter = { x: touch.clientX, y: touch.clientY }
 }, { passive: true })
 
 window.addEventListener('touchmove', (e) => {
@@ -361,22 +366,37 @@ window.addEventListener('touchmove', (e) => {
 
   joystickStick.style.transform = `translate(${moveX}px, ${moveY}px)`
 
-  // Set movement flags based on joystick position
-  // up: move forward, left/right: rotate
-  mobileInput.up = dist > 10; // Any significant movement moves ship forward
+  // 1. Move forward if stick is pushed far enough
+  mobileInput.up = dist > 15;
 
-  // Rotating based on horizontal position of joystick
-  mobileInput.left = dx < -10;
-  mobileInput.right = dx > 10;
+  // 2. Intelligent Steering logic
+  const me = socket.id ? players[socket.id] : null
+  if (me && dist > 10) {
+    const targetAngle = Math.atan2(dy, dx)
+    let currentAngle = me.angle % (Math.PI * 2)
+    if (currentAngle < 0) currentAngle += Math.PI * 2
+
+    let diff = targetAngle - currentAngle
+    // Normalize difference to [-PI, PI]
+    while (diff < -Math.PI) diff += Math.PI * 2
+    while (diff > Math.PI) diff -= Math.PI * 2
+
+    // Set binary flags for server-side tank controls based on shortest path
+    mobileInput.left = diff < -0.15
+    mobileInput.right = diff > 0.15
+  } else {
+    mobileInput.left = false
+    mobileInput.right = false
+  }
 }, { passive: false })
 
-window.addEventListener('touchend', (e) => {
-  // Check if it was the joystick touch ending
-  if (e.touches.length === 0 || Array.from(e.changedTouches).some(t => {
-    const rect = joystickBase.getBoundingClientRect();
-    return t.clientX >= rect.left && t.clientX <= rect.right && t.clientY >= rect.top && t.clientY <= rect.bottom;
-  })) {
+window.addEventListener('touchend', (e: any) => {
+  // If no touches left on the joystick side, deactivate
+  const hasJoystickTouch = Array.from(e.touches).some((t: any) => t.clientX < window.innerWidth / 2);
+
+  if (!hasJoystickTouch) {
     joystickActive = false
+    joystickBase.style.display = 'none'
     joystickStick.style.transform = `translate(0px, 0px)`
     mobileInput.up = false
     mobileInput.left = false
@@ -465,12 +485,17 @@ function updateLeaderboard() {
 function drawPlayer(player: any) {
   if (!player) return
 
+  // Pre-calculate visibility for culling
+  const relX = player.x - camera.x;
+  const relY = player.y - camera.y;
+  if (relX < -100 || relX > canvas.width + 100 || relY < -100 || relY > canvas.height + 100) return;
+
   ctx.save()
   ctx.translate(player.x, player.y)
 
-  // Glow Effect
-  ctx.shadowBlur = 15;
-  ctx.shadowColor = player.color;
+  // Glow Effect REMOVED for Performance
+  // ctx.shadowBlur = 15;
+  // ctx.shadowColor = player.color;
 
   // Draw Ship Body (Triangle)
   ctx.rotate(player.angle || 0)
@@ -487,7 +512,7 @@ function drawPlayer(player: any) {
   ctx.stroke()
 
   // Cockpit
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)' // Made more solid
   ctx.beginPath()
   ctx.arc(0, 0, 5, 0, Math.PI * 2)
   ctx.fill()
@@ -513,6 +538,10 @@ function drawPlayer(player: any) {
 // DRAW HELPERS – power‑ups, obstacles, projectiles
 // ----------------------------------------------------------------------
 function drawPowerup(pup: any) {
+  // Culling
+  if (pup.x < camera.x - 50 || pup.x > camera.x + canvas.width + 50 ||
+    pup.y < camera.y - 50 || pup.y > camera.y + canvas.height + 50) return;
+
   const colors: Record<string, string> = {
     HEALTH: '#00ff00',
     SPEED: '#ffff00',
@@ -538,6 +567,10 @@ function drawPowerup(pup: any) {
 }
 
 function drawObstacle(obs: any) {
+  // Culling
+  if (obs.x + obs.width < camera.x || obs.x > camera.x + canvas.width ||
+    obs.y + obs.height < camera.y || obs.y > camera.y + canvas.height) return;
+
   ctx.save();
   ctx.translate(obs.x, obs.y);
   ctx.fillStyle = 'rgba(255,255,255,0.2)';
@@ -546,6 +579,10 @@ function drawObstacle(obs: any) {
 }
 
 function drawProjectile(proj: any) {
+  // Culling
+  if (proj.x < camera.x - 20 || proj.x > camera.x + canvas.width + 20 ||
+    proj.y < camera.y - 20 || proj.y > camera.y + canvas.height + 20) return;
+
   ctx.save();
   ctx.translate(proj.x, proj.y);
   ctx.fillStyle = proj.color ?? '#fff';
@@ -566,53 +603,29 @@ function gameLoop() {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Background
-  ctx.fillStyle = '#050510'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-  // Debug Info / Timer
-  ctx.fillStyle = 'var(--neon-blue)'
-  ctx.font = 'bold 20px Outfit'
-  ctx.textAlign = 'left'
-
-  const minutes = Math.floor(matchTimer / 60000)
-  const seconds = Math.floor((matchTimer % 60000) / 1000)
-  const timerStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
-
-  ctx.fillText(`TIME: ${timerStr}`, 20, 60)
-  ctx.font = '14px Outfit'
-  ctx.fillText(`ELIMINATION LIMIT: 30`, 20, 85)
-
-  // Team Scores
-  if (teamScores.blue > 0 || teamScores.red > 0) {
-    ctx.font = 'bold 16px Outfit'
-    ctx.fillStyle = '#00f3ff'
-    ctx.fillText(`BLUE TEAM: ${teamScores.blue}`, 20, 115)
-    ctx.fillStyle = '#ff0055'
-    ctx.fillText(`RED TEAM: ${teamScores.red}`, 20, 135)
-  }
-
-  const camDx = camera.x - lastCamera.x
-  const camDy = camera.y - lastCamera.y
-  lastCamera.x = camera.x
-  lastCamera.y = camera.y
-
-  stars.forEach(s => {
-    s.update(camDx, camDy)
-    s.draw(ctx)
-  })
-
-  ctx.save()
-
-  // Follow local player
+  // 1. Follow local player (Camera Update)
   const me = socket.id ? players[socket.id] : null
   if (me) {
     camera.x += (me.x - canvas.width / 2 - camera.x) * camera.lerp
     camera.y += (me.y - canvas.height / 2 - camera.y) * camera.lerp
   }
 
+  // 2. Draw Background (Static)
+  ctx.save()
   ctx.translate(-camera.x, -camera.y)
-  if (screenShake) ctx.translate(shakeX, shakeY)
+  ctx.drawImage(bgCanvas, 0, 0)
+  ctx.restore()
+
+  // 3. Draw World Objects (With Culling)
+  ctx.save()
+  ctx.translate(-camera.x, -camera.y)
+  if (screenShake > 0) {
+    const sx = (Math.random() - 0.5) * screenShake
+    const sy = (Math.random() - 0.5) * screenShake
+    ctx.translate(sx, sy)
+    screenShake *= 0.9
+    if (screenShake < 0.5) screenShake = 0
+  }
 
   // Grid Lines
   ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)'
@@ -632,33 +645,28 @@ function gameLoop() {
   ctx.strokeRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
   ctx.shadowBlur = 0
 
-  // Powerups
+  // Powerups, Obstacles, Players & Projectiles include internal culling
   if (powerups) powerups.forEach(drawPowerup)
-
-  // Obstacles
   if (obstacles) obstacles.forEach(drawObstacle)
 
-  // Draw players
   for (let id in players) {
     if (players[id].hp > 0) {
       drawPlayer(players[id])
 
-      // Thruster particles
-      if (Math.random() < 0.3) {
+      // Limited Thruster particles for performance
+      if (Math.random() < 0.1) {
         const p = players[id]
         const bx = p.x - Math.cos(p.angle) * 15
         const by = p.y - Math.sin(p.angle) * 15
-        particles.push(new Particle(bx, by, '#00ffff', 1, 2))
+        particles.push(new Particle(bx, by, '#00ffff', 1, 1.5))
       }
-    } else {
-      // Dead?
     }
   }
 
-  // Draw projectiles
   projectiles.forEach(drawProjectile)
 
-  // Particles
+  // Particles Cap
+  if (particles.length > 100) particles.splice(0, particles.length - 100);
   for (let i = particles.length - 1; i >= 0; i--) {
     particles[i].update()
     particles[i].draw(ctx)
@@ -666,6 +674,9 @@ function gameLoop() {
   }
 
   ctx.restore()
+
+  // 4. Draw UI Elements (Screen Space)
+  drawUI();
 
   // Handle local input and send to server
   if (!typing && !isGameOver) {
@@ -685,10 +696,27 @@ function gameLoop() {
   }
 
 
-  // Draw Minimap
-  drawMinimap();
+  requestAnimationFrame(gameLoop);
+}
 
-  requestAnimationFrame(gameLoop)
+function drawUI() {
+  ctx.fillStyle = 'var(--neon-blue)'
+  ctx.font = 'bold 20px Outfit'
+  ctx.textAlign = 'left'
+
+  const minutes = Math.floor(matchTimer / 60000)
+  const seconds = Math.floor((matchTimer % 60000) / 1000)
+  const timerStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
+
+  ctx.fillText(`TIME: ${timerStr}`, 20, 60)
+
+  if (teamScores.blue > 0 || teamScores.red > 0) {
+    ctx.font = 'bold 16px Outfit'
+    ctx.fillStyle = '#00f3ff'
+    ctx.fillText(`BLUE: ${teamScores.blue}`, 20, 95)
+    ctx.fillStyle = '#ff0055'
+    ctx.fillText(`RED: ${teamScores.red}`, 20, 115)
+  }
 }
 
 function drawMinimap() {

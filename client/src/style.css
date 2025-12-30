@@ -547,30 +547,36 @@ input[type="text"]:focus {
 
 #joystick-container {
   position: absolute;
-  bottom: 40px;
-  left: 40px;
-  width: 150px;
-  height: 150px;
+  top: 0;
+  left: 0;
+  width: 50vw;
+  height: 100vh;
   pointer-events: auto;
+  overflow: hidden;
 }
 
 #joystick-base {
-  width: 100%;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 2px solid rgba(0, 243, 255, 0.3);
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(0, 243, 255, 0.2);
   border-radius: 50%;
-  display: flex;
+  display: none;
+  /* Shown on touch */
   justify-content: center;
   align-items: center;
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(2px);
 }
 
 #joystick-stick {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   background: var(--neon-blue);
   border-radius: 50%;
   box-shadow: 0 0 20px var(--neon-blue);
+  transition: transform 0.1s ease-out;
 }
 
 #mobile-fire-btn,
