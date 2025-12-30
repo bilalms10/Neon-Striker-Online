@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Neon Strike Online</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +12,15 @@
 </head>
 
 <body>
+  <div id="orientation-warning">
+    <div class="warning-content">
+      <div class="phone-icon"></div>
+      <h2>PLEASE ROTATE YOUR DEVICE</h2>
+      <p>NEON STRIKE REQUIRES LANDSCAPE MODE</p>
+    </div>
+  </div>
+
+
   <div id="login-screen">
     <div class="login-container">
       <h1>NEON STRIKE</h1>
@@ -62,13 +71,17 @@
     </div>
 
     <div id="mobile-controls">
-      <div id="joystick-container">
-        <div id="joystick-base">
-          <div id="joystick-stick"></div>
+      <div class="control-group left">
+        <div id="joystick-container">
+          <div id="joystick-base">
+            <div id="joystick-stick"></div>
+          </div>
         </div>
       </div>
-      <button id="mobile-fire-btn">FIRE</button>
-      <button id="mobile-dash-btn">DASH</button>
+      <div class="control-group right">
+        <button id="mobile-dash-btn">DASH</button>
+        <button id="mobile-fire-btn">FIRE</button>
+      </div>
     </div>
     <div id="instructions">
       WASD to move | SPACE to shoot

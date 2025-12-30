@@ -267,6 +267,13 @@ startBtn.addEventListener('click', () => {
   }
 
   if (audioCtx.state === 'suspended') audioCtx.resume()
+
+  // Try to lock orientation
+  if (window.innerWidth <= 1024 && (screen as any).orientation && (screen as any).orientation.lock) {
+    (screen as any).orientation.lock('landscape').catch(() => {
+      console.log('Orientation lock not supported or failed');
+    });
+  }
 })
 
 // Lobby Interaction
@@ -335,7 +342,7 @@ const dashBtn = document.getElementById('mobile-dash-btn')!
 let joystickActive = false
 let joystickCenter = { x: 0, y: 0 }
 
-joystickBase.addEventListener('touchstart', (e) => {
+joystickBase.addEventListener('touchstart', () => {
   joystickActive = true
   const rect = joystickBase.getBoundingClientRect()
   joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
@@ -354,18 +361,27 @@ window.addEventListener('touchmove', (e) => {
 
   joystickStick.style.transform = `translate(${moveX}px, ${moveY}px)`
 
-  // Set movement flags
-  mobileInput.up = dy < -15
-  mobileInput.left = dx < -15
-  mobileInput.right = dx > 15
+  // Set movement flags based on joystick position
+  // up: move forward, left/right: rotate
+  mobileInput.up = dist > 10; // Any significant movement moves ship forward
+
+  // Rotating based on horizontal position of joystick
+  mobileInput.left = dx < -10;
+  mobileInput.right = dx > 10;
 }, { passive: false })
 
-window.addEventListener('touchend', () => {
-  joystickActive = false
-  joystickStick.style.transform = `translate(0px, 0px)`
-  mobileInput.up = false
-  mobileInput.left = false
-  mobileInput.right = false
+window.addEventListener('touchend', (e) => {
+  // Check if it was the joystick touch ending
+  if (e.touches.length === 0 || Array.from(e.changedTouches).some(t => {
+    const rect = joystickBase.getBoundingClientRect();
+    return t.clientX >= rect.left && t.clientX <= rect.right && t.clientY >= rect.top && t.clientY <= rect.bottom;
+  })) {
+    joystickActive = false
+    joystickStick.style.transform = `translate(0px, 0px)`
+    mobileInput.up = false
+    mobileInput.left = false
+    mobileInput.right = false
+  }
 })
 
 fireBtn.addEventListener('touchstart', (e) => {

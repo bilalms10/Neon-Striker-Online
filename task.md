@@ -19,3 +19,4 @@
 - [x] Implement Chat System (UI & Server Logic) <!-- id: 21 -->
 - [x] Add Minimap (Radar view of players/obstacles) <!-- id: 22 -->
 - [x] Implement Kill Feed (Who killed whom notifications) <!-- id: 23 -->
+- [x] Optimize Mobile Layout & Landscape Support <!-- id: 24 -->
