@@ -557,26 +557,38 @@ input[type="text"]:focus {
 
 #joystick-base {
   position: absolute;
-  width: 120px;
-  height: 120px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 2px solid rgba(0, 243, 255, 0.2);
+  width: 130px;
+  height: 130px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 243, 255, 0.3);
   border-radius: 50%;
   display: none;
-  /* Shown on touch */
   justify-content: center;
   align-items: center;
   transform: translate(-50%, -50%);
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 0 20px rgba(0, 243, 255, 0.1), 0 0 20px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+#joystick-base::after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border: 1px dashed rgba(0, 243, 255, 0.2);
+  border-radius: 50%;
 }
 
 #joystick-stick {
-  width: 50px;
-  height: 50px;
-  background: var(--neon-blue);
+  width: 55px;
+  height: 55px;
+  background: radial-gradient(circle at 30% 30%, var(--neon-blue), #00aaff);
   border-radius: 50%;
-  box-shadow: 0 0 20px var(--neon-blue);
-  transition: transform 0.1s ease-out;
+  box-shadow: 0 0 25px var(--neon-blue), inset 0 0 10px rgba(255, 255, 255, 0.5);
+  transition: transform 0.05s ease-out;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  z-index: 2;
 }
 
 #mobile-fire-btn,

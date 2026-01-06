@@ -19,4 +19,9 @@
 - [x] Implement Chat System (UI & Server Logic) <!-- id: 21 -->
 - [x] Add Minimap (Radar view of players/obstacles) <!-- id: 22 -->
 - [x] Implement Kill Feed (Who killed whom notifications) <!-- id: 23 -->
-- [x] Optimize Mobile Layout & Landscape Support <!-- id: 24 -->
+- [x] Optimize Mobile Layout, Movement & Landscape Support <!-- id: 24 -->
+- [x] Implement Advanced Weaponry (Sniper, Shotgun, Missile) <!-- id: 25 -->
+- [x] Weapon-specific VFX & SFX <!-- id: 26 -->
+- [x] Ammo Management & Weapon UI <!-- id: 27 -->
+- [ ] Add Environment Hazards (Black holes, Asteroids) <!-- id: 28 -->
+- [ ] Implement Capture the Flag mode <!-- id: 29 -->

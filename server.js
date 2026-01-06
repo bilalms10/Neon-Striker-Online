@@ -35,7 +35,49 @@ let gameState = 'PLAYING'; // Default to playing for Solo, but LOBBY for Team mo
 const POWERUP_TYPES = {
     HEALTH: { color: '#00ff00', label: '+' },
     SPEED: { color: '#ffff00', label: '⚡' },
-    RAPID: { color: '#ff00ff', label: '>>>' }
+    RAPID: { color: '#ff00ff', label: '>>>' },
+    SNIPER: { color: '#ffffff', label: 'SN' },
+    SHOTGUN: { color: '#ff6600', label: 'SG' },
+    MISSILE: { color: '#ffaa00', label: 'MS' }
+};
+
+const WEAPON_TYPES = {
+    DEFAULT: {
+        damage: 10,
+        speed: 12,
+        fireDelay: 200,
+        bulletSize: 4,
+        ammo: Infinity,
+        name: 'Pulse Gun'
+    },
+    SNIPER: {
+        damage: 50,
+        speed: 25,
+        fireDelay: 1200,
+        bulletSize: 2,
+        ammo: 5,
+        name: 'Railgun'
+    },
+    SHOTGUN: {
+        damage: 12,
+        speed: 10,
+        fireDelay: 800,
+        bulletSize: 3,
+        ammo: 8,
+        count: 5,
+        spread: 0.5,
+        name: 'Split Shot'
+    },
+    MISSILE: {
+        damage: 30,
+        speed: 7,
+        fireDelay: 1000,
+        bulletSize: 10,
+        ammo: 5,
+        isExplosive: true,
+        explosionRadius: 100,
+        name: 'HE Missile'
+    }
 };
 
 const players = {};
@@ -91,7 +133,9 @@ io.on('connection', (socket) => {
             fireRateMult: 1,
             dashCooldown: 0,
             effects: {},
-            inQueue: (mode === 'team') // Team players start in lobby
+            inQueue: (mode === 'team'), // Team players start in lobby
+            weapon: 'DEFAULT',
+            ammo: Infinity
         };
 
         if (mode === 'team') {
@@ -152,8 +196,33 @@ io.on('connection', (socket) => {
         const player = players[socket.id];
         if (!player || player.inQueue) return;
 
-        if (input.left) player.angle -= 0.1;
-        if (input.right) player.angle += 0.1;
+        // Steering logic
+        if (input.targetAngle !== undefined) {
+            // Mobile/Gamepad target angle steering
+            let target = input.targetAngle;
+            let current = player.angle;
+
+            // Normalize angles
+            while (target < 0) target += Math.PI * 2;
+            while (target >= Math.PI * 2) target -= Math.PI * 2;
+            while (current < 0) current += Math.PI * 2;
+            while (current >= Math.PI * 2) current -= Math.PI * 2;
+
+            let diff = target - current;
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            if (diff < -Math.PI) diff += Math.PI * 2;
+
+            const turnSpeed = 0.15; // Slightly faster than keyboard for responsiveness
+            if (Math.abs(diff) < turnSpeed) {
+                player.angle = target;
+            } else {
+                player.angle += Math.sign(diff) * turnSpeed;
+            }
+        } else {
+            // Keyboard tank steering
+            if (input.left) player.angle -= 0.1;
+            if (input.right) player.angle += 0.1;
+        }
 
         let speed = PLAYER_SPEED * (player.speedMult || 1);
 
@@ -205,26 +274,55 @@ io.on('connection', (socket) => {
         const player = players[socket.id];
         if (!player || player.inQueue) return;
 
-        // Rate limiting check could go here if server-side validation is needed
-        // For now trusting client keyup for "rapid fire" prevention but adding cooldown would be better
+        const weapon = WEAPON_TYPES[player.weapon] || WEAPON_TYPES.DEFAULT;
 
         // Simple cooldown check
         const now = Date.now();
-        const fireDelay = 200 / (player.fireRateMult || 1);
+        const fireDelay = weapon.fireDelay / (player.fireRateMult || 1);
 
         if (player.lastShoot && now - player.lastShoot < fireDelay) return;
         player.lastShoot = now;
 
-        io.emit('effect', { type: 'shoot', id: socket.id });
+        if (player.weapon !== 'DEFAULT') {
+            player.ammo--;
+            if (player.ammo <= 0) {
+                player.weapon = 'DEFAULT';
+                player.ammo = Infinity;
+            }
+        }
 
-        projectiles.push({
-            x: player.x + Math.cos(player.angle) * SHIP_RADIUS,
-            y: player.y + Math.sin(player.angle) * SHIP_RADIUS,
-            vx: Math.cos(player.angle) * PROJECTILE_SPEED,
-            vy: Math.sin(player.angle) * PROJECTILE_SPEED,
-            ownerId: socket.id,
-            color: player.color
-        });
+        io.emit('effect', { type: 'shoot', id: socket.id, weapon: player.weapon });
+
+        if (player.weapon === 'SHOTGUN') {
+            for (let i = 0; i < weapon.count; i++) {
+                const spreadAngle = player.angle + (Math.random() - 0.5) * weapon.spread;
+                projectiles.push({
+                    x: player.x + Math.cos(player.angle) * SHIP_RADIUS,
+                    y: player.y + Math.sin(player.angle) * SHIP_RADIUS,
+                    vx: Math.cos(spreadAngle) * weapon.speed,
+                    vy: Math.sin(spreadAngle) * weapon.speed,
+                    ownerId: socket.id,
+                    color: player.color,
+                    damage: weapon.damage,
+                    size: weapon.bulletSize,
+                    weaponType: player.weapon
+                });
+            }
+        } else {
+            projectiles.push({
+                x: player.x + Math.cos(player.angle) * SHIP_RADIUS,
+                y: player.y + Math.sin(player.angle) * SHIP_RADIUS,
+                vx: Math.cos(player.angle) * weapon.speed,
+                vy: Math.sin(player.angle) * weapon.speed,
+                ownerId: socket.id,
+                color: player.weapon === 'SNIPER' ? '#ffffff' : player.color, // Sniper is white beam-like
+                damage: weapon.damage,
+                size: weapon.bulletSize,
+                isExplosive: weapon.isExplosive,
+                explosionRadius: weapon.explosionRadius,
+                weaponType: player.weapon
+            });
+        }
     });
 });
 
@@ -241,6 +339,8 @@ function resetGame() {
         players[id].hp = 100;
         players[id].x = Math.random() * CANVAS_WIDTH;
         players[id].y = Math.random() * CANVAS_HEIGHT;
+        players[id].weapon = 'DEFAULT';
+        players[id].ammo = Infinity;
     }
 
     io.emit('gameReset');
@@ -327,6 +427,9 @@ setInterval(() => {
         let hitObs = false;
         for (const obs of obstacles) {
             if (p.x > obs.x && p.x < obs.x + obs.width && p.y > obs.y && p.y < obs.y + obs.height) {
+                if (p.isExplosive) {
+                    processExplosion(p);
+                }
                 projectiles.splice(i, 1);
                 io.emit('effect', { type: 'hit', x: p.x, y: p.y, color: '#aaa' });
                 hitObs = true;
@@ -344,31 +447,18 @@ setInterval(() => {
             if (player.team !== 'solo' && player.team === players[p.ownerId]?.team) continue;
 
             const dist = Math.hypot(p.x - player.x, p.y - player.y);
-            if (dist < SHIP_RADIUS) {
+            if (dist < SHIP_RADIUS + (p.size || 4)) {
                 // Hit!
-                player.hp -= 10;
+                if (p.isExplosive) {
+                    processExplosion(p);
+                } else {
+                    player.hp -= (p.damage || 10);
+                }
 
                 io.emit('effect', { type: 'hit', x: p.x, y: p.y, color: player.color, id: id });
 
-                if (player.hp <= 0) {
-                    const victimName = player.name;
-                    const killerName = players[p.ownerId] ? players[p.ownerId].name : 'Unknown';
-
-                    players[p.ownerId].score += 10;
-
-                    if (players[p.ownerId].team === 'blue') teamKills.blue++;
-                    if (players[p.ownerId].team === 'red') teamKills.red++;
-
-                    checkWinCondition();
-
-                    // Respawn
-                    player.x = Math.random() * CANVAS_WIDTH;
-                    player.y = Math.random() * CANVAS_HEIGHT;
-                    player.hp = 100;
-                    io.emit('effect', { type: 'die', id: id });
-
-                    // Kill Feed Event
-                    io.emit('kill', { killer: killerName, victim: victimName, killerColor: players[p.ownerId]?.color, victimColor: player.color });
+                if (player.hp <= 0 && !p.isExplosive) {
+                    handleKill(p.ownerId, id);
                 }
 
                 projectiles.splice(i, 1);
@@ -429,6 +519,9 @@ setInterval(() => {
                 } else if (pup.type === 'RAPID') {
                     player.fireRateMult = 3;
                     setTimeout(() => { if (players[id]) players[id].fireRateMult = 1; }, 5000);
+                } else if (WEAPON_TYPES[pup.type]) {
+                    player.weapon = pup.type;
+                    player.ammo = WEAPON_TYPES[pup.type].ammo;
                 }
 
                 io.emit('effect', { type: 'powerup', x: pup.x, y: pup.y });
@@ -439,6 +532,50 @@ setInterval(() => {
         }
     }
 }, 1000 / 60); // 60 FPS update logic
+
+function handleKill(killerId, victimId) {
+    const killer = players[killerId];
+    const victim = players[victimId];
+    if (!killer || !victim) return;
+
+    killer.score += 10;
+    if (killer.team === 'blue') teamKills.blue++;
+    if (killer.team === 'red') teamKills.red++;
+
+    checkWinCondition();
+
+    // Respawn victim
+    victim.x = Math.random() * CANVAS_WIDTH;
+    victim.y = Math.random() * CANVAS_HEIGHT;
+    victim.hp = 100;
+    victim.weapon = 'DEFAULT';
+    victim.ammo = Infinity;
+    io.emit('effect', { type: 'die', id: victimId });
+
+    // Kill Feed Event
+    io.emit('kill', {
+        killer: killer.name,
+        victim: victim.name,
+        killerColor: killer.color,
+        victimColor: victim.color
+    });
+}
+
+function processExplosion(p) {
+    io.emit('effect', { type: 'explosion', x: p.x, y: p.y, radius: p.explosionRadius });
+    for (let id in players) {
+        const player = players[id];
+        const dist = Math.hypot(p.x - player.x, p.y - player.y);
+        if (dist < p.explosionRadius) {
+            const damage = (p.damage || 30) * (1 - dist / (p.explosionRadius * 1.2));
+            player.hp -= damage;
+
+            if (player.hp <= 0) {
+                handleKill(p.ownerId, id);
+            }
+        }
+    }
+}
 
 const port = process.env.PORT || 3000;
 server.listen(port, '0.0.0.0', () => {

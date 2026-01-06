@@ -20,14 +20,7 @@ const camera = {
 // Socket connection
 const socket = io(window.location.hostname === 'localhost' ? 'http://localhost:3000' : '/')
 
-// Mobile Input State
-const mobileInput = {
-  up: false,
-  left: false,
-  right: false,
-  fire: false,
-  dash: false
-}
+// Mobile Input State will be defined later with the joystick logic to avoid duplication
 
 
 let players: any = {}
@@ -130,13 +123,27 @@ function playSound(type: 'shoot' | 'explosion' | 'powerup') {
     osc.start(now)
     osc.stop(now + 0.1)
   } else if (type === 'explosion') {
-    osc.type = 'sawtooth'
-    osc.frequency.setValueAtTime(100, now)
-    osc.frequency.exponentialRampToValueAtTime(10, now + 0.3)
-    gain.gain.setValueAtTime(0.2, now)
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
-    osc.start(now)
-    osc.stop(now + 0.3)
+    // Noise-like explosion
+    const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.3, audioCtx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noiseBuffer.length; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const noiseFilter = audioCtx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(400, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.3, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noise.start();
   } else if (type === 'powerup') {
     osc.type = 'sine'
     osc.frequency.setValueAtTime(600, now)
@@ -274,10 +281,26 @@ socket.on('effect', (data: any) => {
     case 'powerup':
       playSound('powerup');
       break;
+    case 'explosion':
+      playSound('explosion');
+      screenShake = 25;
+      createExplosionGroup(data.x, data.y, data.radius || 100);
+      break;
     default:
       break;
   }
 });
+
+function createExplosionGroup(x: number, y: number, radius: number) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * radius;
+    const px = x + Math.cos(angle) * dist;
+    const py = y + Math.sin(angle) * dist;
+    const color = i % 2 === 0 ? '#ffaa00' : '#ff5500';
+    particles.push(new Particle(px, py, color, Math.random() * 4, Math.random() * 5 + 2));
+  }
+}
 
 let selectedMode = 'solo'
 
@@ -370,93 +393,103 @@ socket.on('gameStarted', () => {
   uiContainer.style.display = 'block'
 })
 
+// Mobile Input State
+const mobileInput: any = {
+  up: false,
+  targetAngle: undefined,
+  fire: false,
+  dash: false
+}
+
 // Mobile Joystick Logic
 const joystickStick = document.getElementById('joystick-stick')!
 const joystickBase = document.getElementById('joystick-base')!
 const fireBtn = document.getElementById('mobile-fire-btn')!
 const dashBtn = document.getElementById('mobile-dash-btn')!
 
-const joystickContainer = document.getElementById('joystick-container')!
-let joystickActive = false
+let joystickTouchId: number | null = null
 let joystickCenter = { x: 0, y: 0 }
+let lastJoystickTap = 0
 
-joystickContainer.addEventListener('touchstart', (e: any) => {
-  const touch = e.touches[0]
-  joystickActive = true
+window.addEventListener('touchstart', (e: any) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const touch = e.changedTouches[i]
+    if (touch.clientX < window.innerWidth / 2 && joystickTouchId === null) {
+      joystickTouchId = touch.identifier
+      joystickCenter = { x: touch.clientX, y: touch.clientY }
 
-  // Position the joystick base where the user touched
-  joystickBase.style.display = 'flex'
-  joystickBase.style.left = `${touch.clientX}px`
-  joystickBase.style.top = `${touch.clientY}px`
+      const now = Date.now()
+      if (now - lastJoystickTap < 300) {
+        mobileInput.dash = true
+        setTimeout(() => mobileInput.dash = false, 150)
+      }
+      lastJoystickTap = now
 
-  joystickCenter = { x: touch.clientX, y: touch.clientY }
-}, { passive: true })
-
-window.addEventListener('touchmove', (e) => {
-  if (!joystickActive) return
-  const touch = e.touches[0]
-  const dx = touch.clientX - joystickCenter.x
-  const dy = touch.clientY - joystickCenter.y
-  const dist = Math.sqrt(dx * dx + dy * dy)
-  const maxDist = 45
-
-  const moveX = dx / dist * Math.min(dist, maxDist)
-  const moveY = dy / dist * Math.min(dist, maxDist)
-
-  joystickStick.style.transform = `translate(${moveX}px, ${moveY}px)`
-
-  // 1. Move forward if stick is pushed far enough
-  mobileInput.up = dist > 15;
-
-  // 2. Intelligent Steering logic
-  const me = socket.id ? players[socket.id] : null
-  if (me && dist > 10) {
-    const targetAngle = Math.atan2(dy, dx)
-    let currentAngle = me.angle % (Math.PI * 2)
-    if (currentAngle < 0) currentAngle += Math.PI * 2
-
-    let diff = targetAngle - currentAngle
-    // Normalize difference to [-PI, PI]
-    while (diff < -Math.PI) diff += Math.PI * 2
-    while (diff > Math.PI) diff -= Math.PI * 2
-
-    // Set binary flags for server-side tank controls based on shortest path
-    mobileInput.left = diff < -0.15
-    mobileInput.right = diff > 0.15
-  } else {
-    mobileInput.left = false
-    mobileInput.right = false
+      joystickBase.style.display = 'flex'
+      joystickBase.style.left = `${touch.clientX}px`
+      joystickBase.style.top = `${touch.clientY}px`
+      joystickStick.style.transform = `translate(0px, 0px)`
+      e.preventDefault()
+    }
   }
 }, { passive: false })
 
-window.addEventListener('touchend', (e: any) => {
-  // If no touches left on the joystick side, deactivate
-  const hasJoystickTouch = Array.from(e.touches).some((t: any) => t.clientX < window.innerWidth / 2);
+window.addEventListener('touchmove', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const touch = e.changedTouches[i]
+    if (touch.identifier === joystickTouchId) {
+      const dx = touch.clientX - joystickCenter.x
+      const dy = touch.clientY - joystickCenter.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const maxDist = 50
 
-  if (!hasJoystickTouch) {
-    joystickActive = false
-    joystickBase.style.display = 'none'
-    joystickStick.style.transform = `translate(0px, 0px)`
-    mobileInput.up = false
-    mobileInput.left = false
-    mobileInput.right = false
+      const ratio = Math.min(dist, maxDist) / dist || 0
+      const moveX = dx * ratio
+      const moveY = dy * ratio
+
+      joystickStick.style.transform = `translate(${moveX}px, ${moveY}px)`
+
+      // Movement logic
+      if (dist > 10) {
+        mobileInput.targetAngle = Math.atan2(dy, dx)
+        mobileInput.up = dist > 20
+      } else {
+        mobileInput.up = false
+      }
+
+      e.preventDefault()
+    }
+  }
+}, { passive: false })
+
+window.addEventListener('touchend', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const touch = e.changedTouches[i]
+    if (touch.identifier === joystickTouchId) {
+      joystickTouchId = null
+      joystickBase.style.display = 'none'
+      mobileInput.up = false
+      mobileInput.targetAngle = undefined
+    }
   }
 })
 
-fireBtn.addEventListener('touchstart', (e) => {
+fireBtn.addEventListener('touchstart', (e: any) => {
   mobileInput.fire = true
   e.preventDefault()
-})
-fireBtn.addEventListener('touchend', () => {
+}, { passive: false })
+fireBtn.addEventListener('touchend', (e: any) => {
   mobileInput.fire = false
-})
-
-dashBtn.addEventListener('touchstart', (e) => {
-  mobileInput.dash = true
   e.preventDefault()
 })
-dashBtn.addEventListener('touchend', () => {
+
+dashBtn.addEventListener('touchstart', (e: any) => {
+  mobileInput.dash = true
+  e.preventDefault()
+}, { passive: false })
+dashBtn.addEventListener('touchend', (e: any) => {
   mobileInput.dash = false
+  e.preventDefault()
 })
 
 
@@ -590,11 +623,17 @@ function drawPowerup(pup: any) {
     HEALTH: '#00ff00',
     SPEED: '#ffff00',
     RAPID: '#ff00ff',
+    SNIPER: '#ffffff',
+    SHOTGUN: '#ff6600',
+    MISSILE: '#ffaa00'
   };
   const label: Record<string, string> = {
     HEALTH: '+',
     SPEED: '⚡',
     RAPID: '>>>',
+    SNIPER: 'SN',
+    SHOTGUN: 'SG',
+    MISSILE: 'MS'
   };
   ctx.save();
   ctx.translate(pup.x, pup.y);
@@ -624,15 +663,44 @@ function drawObstacle(obs: any) {
 
 function drawProjectile(proj: any) {
   // Culling
-  if (proj.x < camera.x - 20 || proj.x > camera.x + canvas.width + 20 ||
-    proj.y < camera.y - 20 || proj.y > camera.y + canvas.height + 20) return;
+  if (proj.x < camera.x - 50 || proj.x > camera.x + canvas.width + 50 ||
+    proj.y < camera.y - 50 || proj.y > camera.y + canvas.height + 50) return;
 
   ctx.save();
   ctx.translate(proj.x, proj.y);
-  ctx.fillStyle = proj.color ?? '#fff';
-  ctx.beginPath();
-  ctx.arc(0, 0, 4, 0, Math.PI * 2);
-  ctx.fill();
+
+  if (proj.weaponType === 'SNIPER') {
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#fff';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    const angle = Math.atan2(proj.vy, proj.vx);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(-15, 0);
+    ctx.lineTo(15, 0);
+    ctx.stroke();
+  } else if (proj.weaponType === 'MISSILE') {
+    const angle = Math.atan2(proj.vy, proj.vx);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#ffaa00';
+    ctx.beginPath();
+    ctx.rect(-8, -4, 16, 8);
+    ctx.fill();
+
+    // Engine glow
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-10, -2, 4, 4);
+
+    if (Math.random() < 0.3) {
+      particles.push(new Particle(proj.x - proj.vx, proj.y - proj.vy, '#ff5500', 0.5, 2));
+    }
+  } else {
+    ctx.fillStyle = proj.color ?? '#fff';
+    ctx.beginPath();
+    ctx.arc(0, 0, proj.size || 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -726,11 +794,12 @@ function gameLoop() {
 
   // Handle local input and send to server
   if (!typing && !isGameOver) {
-    const input = {
+    const input: any = {
       up: keys['KeyW'] || keys['ArrowUp'] || mobileInput.up,
-      left: keys['KeyA'] || keys['ArrowLeft'] || mobileInput.left,
-      right: keys['KeyD'] || keys['ArrowRight'] || mobileInput.right,
-      dash: keys['ShiftLeft'] || keys['ShiftRight'] || mobileInput.dash
+      left: keys['KeyA'] || keys['ArrowLeft'],
+      right: keys['KeyD'] || keys['ArrowRight'],
+      dash: keys['ShiftLeft'] || keys['ShiftRight'] || mobileInput.dash,
+      targetAngle: mobileInput.targetAngle
     }
     socket.emit('playerInput', input)
 
@@ -762,6 +831,36 @@ function drawUI() {
     ctx.fillText(`BLUE: ${teamScores.blue}`, 20, 95)
     ctx.fillStyle = '#ff0055'
     ctx.fillText(`RED: ${teamScores.red}`, 20, 115)
+  }
+
+  // Weapon UI
+  const me = socket.id ? players[socket.id] : null
+  if (me) {
+    const weaponY = canvas.height - 100;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(20, weaponY, 200, 60);
+    ctx.strokeStyle = me.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(20, weaponY, 200, 60);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Outfit';
+    ctx.fillText(me.weapon === 'DEFAULT' ? 'PULSE GUN' : me.weapon, 35, weaponY + 25);
+
+    ctx.font = '14px Outfit';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    const ammoText = me.ammo === Infinity ? '∞' : `AMMO: ${me.ammo}`;
+    ctx.fillText(ammoText, 35, weaponY + 48);
+
+    // Ammo Bar
+    if (me.ammo !== Infinity) {
+      const weaponMaxAmmo: Record<string, number> = { SNIPER: 5, SHOTGUN: 8, MISSILE: 5 };
+      const max = weaponMaxAmmo[me.weapon] || 1;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(110, weaponY + 38, 90, 10);
+      ctx.fillStyle = me.color;
+      ctx.fillRect(110, weaponY + 38, (me.ammo / max) * 90, 10);
+    }
   }
 
   drawMinimap();
